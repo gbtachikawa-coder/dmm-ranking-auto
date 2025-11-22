@@ -1,13 +1,14 @@
 {
-  "name": "dmm-ranking",
+  "name": "dmm-ranking-auto",
   "version": "1.0.0",
+  "main": "index-cloud.cjs",
   "type": "commonjs",
-  "private": true,
+  "scripts": {
+    "start": "node index-cloud.cjs"
+  },
   "dependencies": {
-    "dayjs": "^1.11.19",
-    "google-auth-library": "^8.9.0",
-    "google-spreadsheet": "^4.0.2",
-    "googleapis": "^166.0.0",
-    "puppeteer": "^22.15.0"
+    "axios": "^1.6.0",
+    "cheerio": "^1.0.0-rc.12",
+    "googleapis": "^128.0.0"
   }
 }

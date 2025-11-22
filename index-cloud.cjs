@@ -1,13 +1,17 @@
+// index-cloud.cjs（GitHub Actions 用・完全版）
+
 const puppeteer = require("puppeteer");
 const { google } = require("googleapis");
 
 const SPREADSHEET_ID = "1T2g-vpj0EDFabuNgVqpP-9n12sLRVnR5jOEa1yWJgW0";
-const KEYFILE_PATH = "./service-account-key.json";
 
 /* ------------------ 日付フォーマット ------------------ */
 function todayJpMd() {
   const now = new Date();
-  const jstNow = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Tokyo" }));
+  const jstNow = new Date(
+    now.toLocaleString("en-US", { timeZone: "Asia/Tokyo" })
+  );
+  // 前日扱い
   jstNow.setDate(jstNow.getDate() - 1);
   const weekday = ["日", "月", "火", "水", "木", "金", "土"][jstNow.getDay()];
   return `${jstNow.getMonth() + 1}/${jstNow.getDate()}(${weekday})`;
@@ -22,31 +26,37 @@ function cleanForOutput(raw) {
 /* ------------------ 各ジャンルのスクレイピング ------------------ */
 async function scrapeGenre(page, genreUrl, groupLabel) {
   console.log(`🌐 ${groupLabel} ランキング取得開始...`);
+
   await page.goto(
-    `https://www.dmm.co.jp/age_check/=/declared=yes/?rurl=${encodeURIComponent(genreUrl)}`,
+    `https://www.dmm.co.jp/age_check/=/declared=yes/?rurl=${encodeURIComponent(
+      genreUrl
+    )}`,
     { waitUntil: "networkidle2", timeout: 90000 }
   );
 
-await page.waitForSelector("body", { timeout: 60000 });
+  // body 出現待ち
+  await page.waitForSelector("body", { timeout: 60000 });
 
-// 年齢確認が出た場合に強制突破
-const ageBtn = await page.$("a[href*='declared=yes']");
-if (ageBtn) {
-  await ageBtn.click();
-  await page.waitForNavigation({ waitUntil: "networkidle2" });
-}
+  // 年齢確認を踏んでしまった場合は突破
+  const ageBtn = await page.$("a[href*='declared=yes']");
+  if (ageBtn) {
+    await ageBtn.click();
+    await page.waitForNavigation({ waitUntil: "networkidle2" });
+  }
 
-// ランキングブロック出現まで待機
-await page.waitForSelector("tr.rank1", { timeout: 60000 });
-
+  // ランキングテーブル出現待ち
+  await page.waitForSelector("table.rank_table", { timeout: 60000 });
 
   const data = await page.evaluate((groupLabel) => {
     const results = [];
+
+    // 「集計日： 11/11」などから月を取得
     const dateEl = document.querySelector("div.rank_title + p");
     const dateText = dateEl?.innerText?.trim() || "";
     const dateMatch = dateText.match(/(\d{1,2})\/(\d{1,2})/);
     const month = dateMatch ? parseInt(dateMatch[1]) : null;
 
+    // 列ごとの種別
     let typeLabels = ["日間", "週間", "月間"];
     if (groupLabel === "新人") typeLabels = ["新人日間", "新人週間"];
     if (groupLabel === "時間帯") typeLabels = ["朝帯", "昼帯", "夜帯"];
@@ -74,61 +84,47 @@ await page.waitForSelector("tr.rank1", { timeout: 60000 });
 
 /* ------------------ メイン処理 ------------------ */
 (async () => {
-const browser = await puppeteer.launch({
-  headless: "new",
-  args: [
-    "--no-sandbox",
-    "--disable-setuid-sandbox",
-    "--disable-dev-shm-usage",
-    "--disable-gpu",
-    "--no-zygote",
-    "--single-process"
-  ],
-  defaultViewport: {
-    width: 1280,
-    height: 900
-  }
-});
+  // GitHub Actions 用 Puppeteer 起動設定
+  const browser = await puppeteer.launch({
+    headless: "new",
+    args: [
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--disable-dev-shm-usage",
+      "--disable-gpu",
+      "--no-zygote",
+      "--single-process",
+    ],
+    defaultViewport: { width: 1280, height: 900 },
+  });
 
-const page = await browser.newPage();
-
-await page.setUserAgent(
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-);
-
-
-const page = await browser.newPage();
-
-// ✅ Bot対策：人間ブラウザ偽装
-await page.setUserAgent(
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-);
-
-await page.setExtraHTTPHeaders({
-  "Accept-Language": "ja-JP,ja;q=0.9,en-US;q=0.8,en;q=0.7"
-});
-
-// ✅ navigator.webdriver を無効化
-await page.evaluateOnNewDocument(() => {
-  Object.defineProperty(navigator, 'webdriver', { get: () => false });
-});
-
-  defaultViewport: { width: 1280, height: 900 }
-});
-
- const page = await browser.newPage();
-
-await page.setUserAgent(
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-);
-
+  // ★ page はここで 1 回だけ作る
+  const page = await browser.newPage();
+  await page.setUserAgent(
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+  );
 
   const GENRES = [
-    { label: "あちゃ", url: "https://www.dmm.co.jp/live/chat/-/character-ranking/=/genre=popular/group=acha/" },
-    { label: "まちゃ", url: "https://www.dmm.co.jp/live/chat/-/character-ranking/=/genre=popular/group=macha/" },
-    { label: "おちゃ", url: "https://www.dmm.co.jp/live/chat/-/character-ranking/=/genre=popular/group=ocha/" },
-    { label: "新人", url: "https://www.dmm.co.jp/live/chat/-/character-ranking/=/genre=newface/" },
-    { label: "時間帯", url: "https://www.dmm.co.jp/live/chat/-/character-ranking/=/genre=timezone/" },
+    {
+      label: "あちゃ",
+      url: "https://www.dmm.co.jp/live/chat/-/character-ranking/=/genre=popular/group=acha/",
+    },
+    {
+      label: "まちゃ",
+      url: "https://www.dmm.co.jp/live/chat/-/character-ranking/=/genre=popular/group=macha/",
+    },
+    {
+      label: "おちゃ",
+      url: "https://www.dmm.co.jp/live/chat/-/character-ranking/=/genre=popular/group=ocha/",
+    },
+    {
+      label: "新人",
+      url: "https://www.dmm.co.jp/live/chat/-/character-ranking/=/genre=newface/",
+    },
+    {
+      label: "時間帯",
+      url: "https://www.dmm.co.jp/live/chat/-/character-ranking/=/genre=timezone/",
+    },
   ];
 
   console.log("🚀 全ジャンルランキングを順次取得します...");
@@ -139,7 +135,9 @@ await page.setUserAgent(
     try {
       const result = await scrapeGenre(page, g.url, g.label);
       if (!scrapeMonth && result.month) scrapeMonth = result.month;
-      allData = allData.concat(result.results.map((r) => ({ ...r, group: g.label })));
+      allData = allData.concat(
+        result.results.map((r) => ({ ...r, group: g.label }))
+      );
     } catch (err) {
       console.log(`⚠️ ${g.label} の取得に失敗: ${err.message}`);
     }
@@ -148,17 +146,20 @@ await page.setUserAgent(
   if (!scrapeMonth) {
     const now = new Date();
     scrapeMonth = now.getMonth() + 1;
-    console.log(`⚠️ 集計日が取得できなかったため、現在の月(${scrapeMonth}月)を使用します。`);
+    console.log(
+      `⚠️ 集計日が取得できなかったため、現在の月(${scrapeMonth}月)を使用します。`
+    );
   }
 
   console.log(`📊 集計対象月: ${scrapeMonth}月`);
   console.log(`📦 合計 ${allData.length}件 取得完了`);
 
   /* ------------------ Google Sheets API ------------------ */
-const auth = new google.auth.GoogleAuth({
-  credentials: JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT),
-  scopes: ["https://www.googleapis.com/auth/spreadsheets"],
-});
+  const auth = new google.auth.GoogleAuth({
+    // GitHub Secrets → 環境変数 GOOGLE_SERVICE_ACCOUNT から読み込み
+    credentials: JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT),
+    scopes: ["https://www.googleapis.com/auth/spreadsheets"],
+  });
 
   const sheets = google.sheets({ version: "v4", auth });
 
@@ -170,7 +171,9 @@ const auth = new google.auth.GoogleAuth({
 
   const searchList = (searchRes.data.values || []).slice(1);
   const targetNames = searchList.map((r) => r[0]?.trim()).filter(Boolean);
-  const groupMap = Object.fromEntries(searchList.map((r) => [r[0]?.trim(), r[1]?.trim()]));
+  const groupMap = Object.fromEntries(
+    searchList.map((r) => [r[0]?.trim(), r[1]?.trim()])
+  );
 
   console.log(`🔎 検索リスト人数: ${targetNames.length}名`);
 
@@ -186,7 +189,14 @@ const auth = new google.auth.GoogleAuth({
   /* ---------- 並び順 ---------- */
   const genreOrder = { あちゃ: 1, まちゃ: 2, おちゃ: 3, 新人: 4, 時間帯: 5 };
   const typeOrder = {
-    日間: 1, 週間: 2, 月間: 3, 昼帯: 4, 夜帯: 5, 朝帯: 6, 新人日間: 7, 新人週間: 8,
+    日間: 1,
+    週間: 2,
+    月間: 3,
+    昼帯: 4,
+    夜帯: 5,
+    朝帯: 6,
+    新人日間: 7,
+    新人週間: 8,
   };
 
   filtered.sort((a, b) => {
@@ -239,7 +249,9 @@ const auth = new google.auth.GoogleAuth({
   });
 
   if (values.length === 0) {
-    console.log("⚠️ 一致する名前がありません。スプレッドシートには書き込みません。");
+    console.log(
+      "⚠️ 一致する名前がありません。スプレッドシートには書き込みません。"
+    );
     await browser.close();
     return;
   }
@@ -247,7 +259,9 @@ const auth = new google.auth.GoogleAuth({
   const sheetName = `${scrapeMonth}月`;
 
   /* ---------- シート存在チェック＆作成 ---------- */
-  const sheetMeta = await sheets.spreadsheets.get({ spreadsheetId: SPREADSHEET_ID });
+  const sheetMeta = await sheets.spreadsheets.get({
+    spreadsheetId: SPREADSHEET_ID,
+  });
   const sheetExists = sheetMeta.data.sheets.some(
     (s) => s.properties.title === sheetName
   );
@@ -271,6 +285,8 @@ const auth = new google.auth.GoogleAuth({
     requestBody: { values },
   });
 
-  console.log(`🎉 ${sheetName} への書き込み完了！（月自動判定・並び順完全版・空白なし）`);
+  console.log(
+    `🎉 ${sheetName} への書き込み完了！（月自動判定・並び順完全版・空白なし）`
+  );
   await browser.close();
 })();

@@ -1,5 +1,4 @@
 const puppeteer = require("puppeteer");
-const cheerio = require("cheerio");
 const { google } = require("googleapis");
 
 const SPREADSHEET_ID = "1T2g-vpj0EDFabuNgVqpP-9n12sLRVnR5jOEa1yWJgW0";
@@ -12,67 +11,46 @@ function todayJpMd() {
   return `${d.getMonth()+1}/${d.getDate()}(${w})`;
 }
 
-/* 文字正規化 */
+/* 正規化 */
 function normalizeName(str){
   return str.replace(/[^ぁ-んァ-ヶー一-龠々]/g,"");
 }
 
-/* PuppeteerでHTML取得 */
-async function getHtml(url, label){
-  console.log(`${label} 取得中...`);
-
-  const browser = await puppeteer.launch({
-    headless: "new",
-    args: [
-      "--no-sandbox",
-      "--disable-setuid-sandbox",
-      "--disable-blink-features=AutomationControlled"
-    ]
-  });
-
-  const page = await browser.newPage();
-
-  await page.setUserAgent(
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-  );
-
-  await page.goto(url, {
-    waitUntil: "networkidle2",
-    timeout: 60000
-  });
-
-  const html = await page.content();
-  await browser.close();
-
-  return html;
-}
-
 /* ランキング取得 */
-async function fetchRanking(url, group) {
+async function fetchRanking(page, url, group) {
+  console.log(`${group} 取得中...`);
+  await page.goto(url, { waitUntil: "networkidle2" });
 
-  const html = await getHtml(url, group);
-  const $ = cheerio.load(html);
-  const results = [];
+  await page.waitForSelector("table.rank_table");
 
-  $("table.rank_table tr").each((i, el) => {
-    const rank = i;
-    if(rank === 0) return;
+  const results = await page.evaluate(() => {
+    const rows = document.querySelectorAll("table.rank_table tr");
+    const data = [];
 
-    $(el).find("td").each((idx, td)=>{
-      const name = $(td).find("img").attr("alt");
-      if(name){
-        results.push({
-          name: normalizeName(name),
-          rank: rank,
-          type: idx === 0 ? "日間" : idx === 1 ? "週間" : "月間",
-          genre: group
-        });
-      }
+    rows.forEach((row, i) => {
+      if(i === 0) return;
+      const tds = row.querySelectorAll("td");
+
+      tds.forEach((td, idx) => {
+        const img = td.querySelector("img");
+        if(img && img.alt){
+          data.push({
+            name: img.alt,
+            rank: i,
+            col: idx
+          });
+        }
+      });
     });
+    return data;
   });
 
-  console.log(`${group} 抽出件数: ${results.length}`);
-  return results;
+  return results.map(r => ({
+    name: normalizeName(r.name),
+    rank: r.rank,
+    type: r.col === 0 ? "日間" : r.col === 1 ? "週間" : "月間",
+    genre: group
+  }));
 }
 
 (async () => {
@@ -84,6 +62,14 @@ async function fetchRanking(url, group) {
 
   const sheets = google.sheets({version:"v4", auth});
 
+  const browser = await puppeteer.launch({
+    headless: "new",
+    args: ["--no-sandbox", "--disable-setuid-sandbox"]
+  });
+
+  const page = await browser.newPage();
+  await page.setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120 Safari/537.36");
+
   const genres = [
     { label:"あちゃ", url:"https://www.dmm.co.jp/live/chat/-/character-ranking/=/genre=popular/group=acha/" },
     { label:"まちゃ", url:"https://www.dmm.co.jp/live/chat/-/character-ranking/=/genre=popular/group=macha/" },
@@ -93,7 +79,8 @@ async function fetchRanking(url, group) {
   let allResults = [];
 
   for(const g of genres){
-    const data = await fetchRanking(g.url, g.label);
+    const data = await fetchRanking(page, g.url, g.label);
+    console.log(`${g.label} 抽出件数:`, data.length);
     allResults = allResults.concat(data);
   }
 
@@ -112,6 +99,7 @@ async function fetchRanking(url, group) {
 
   if(filtered.length === 0){
     console.log("一致データなし");
+    await browser.close();
     return;
   }
 
@@ -132,4 +120,5 @@ async function fetchRanking(url, group) {
 
   console.log("✅ 書き込み完了");
 
+  await browser.close();
 })();

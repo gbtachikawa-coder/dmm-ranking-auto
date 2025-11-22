@@ -27,25 +27,24 @@ function cleanForOutput(raw) {
 async function scrapeGenre(page, genreUrl, groupLabel) {
   console.log(`🌐 ${groupLabel} ランキング取得開始...`);
 
-  await page.goto(
-    `https://www.dmm.co.jp/age_check/=/declared=yes/?rurl=${encodeURIComponent(
-      genreUrl
-    )}`,
-    { waitUntil: "networkidle2", timeout: 90000 }
-  );
+ await page.goto(
+  `https://www.dmm.co.jp/age_check/=/declared=yes/?rurl=${encodeURIComponent(genreUrl)}`,
+  { waitUntil: "domcontentloaded", timeout: 90000 }
+);
 
-  // body 出現待ち
-  await page.waitForSelector("body", { timeout: 60000 });
+// 年齢確認が出た場合に強制突破
+const ageBtn = await page.$("a[href*='declared=yes']");
+if (ageBtn) {
+  await ageBtn.click();
+  await page.waitForTimeout(3000);
+}
 
-  // 年齢確認を踏んでしまった場合は突破
-  const ageBtn = await page.$("a[href*='declared=yes']");
-  if (ageBtn) {
-    await ageBtn.click();
-    await page.waitForNavigation({ waitUntil: "networkidle2" });
-  }
+// ランキング要素を待つ
+await page.waitForSelector("a.listbox-rank.js-lc-i3Link", {
+  timeout: 60000,
+});
 
-  // ランキングテーブル出現待ち
-  await page.waitForSelector("table.rank_table", { timeout: 60000 });
+
 
   const data = await page.evaluate((groupLabel) => {
     const results = [];

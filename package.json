@@ -1,14 +1,16 @@
 {
   "name": "dmm-ranking-auto",
   "version": "1.0.0",
+  "description": "DMM ranking auto scraper",
   "main": "index-cloud.cjs",
   "type": "commonjs",
   "scripts": {
     "start": "node index-cloud.cjs"
   },
   "dependencies": {
-    "puppeteer": "^21.7.0",
+    "axios": "^1.6.0",
     "cheerio": "^1.0.0-rc.12",
-    "googleapis": "^128.0.0"
+    "googleapis": "^128.0.0",
+    "puppeteer": "^22.0.0"
   }
 }

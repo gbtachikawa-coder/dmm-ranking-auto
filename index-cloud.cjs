@@ -1,122 +1,113 @@
-// ✅ DMMランキング GitHub Actions 完全安定版
-
 const axios = require("axios");
 const cheerio = require("cheerio");
 const { google } = require("googleapis");
 
 const SPREADSHEET_ID = "1T2g-vpj0EDFabuNgVqpP-9n12sLRVnR5jOEa1yWJgW0";
 
-// ===== 日付 =====
+/* 日付 */
 function todayJpMd() {
-  const now = new Date();
-  const jst = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Tokyo" }));
-  jst.setDate(jst.getDate() - 1);
-  const w = ["日","月","火","水","木","金","土"][jst.getDay()];
-  return `${jst.getMonth()+1}/${jst.getDate()}(${w})`;
+  const d = new Date();
+  d.setDate(d.getDate() - 1);
+  const w = ["日","月","火","水","木","金","土"][d.getDay()];
+  return `${d.getMonth()+1}/${d.getDate()}(${w})`;
 }
 
-function cleanName(text){
-  if(!text) return "";
-  return text.replace(/[^ぁ-んァ-ヶー一-龠々]/g,"");
+/* 文字正規化 */
+function normalizeName(str){
+  return str.replace(/[^ぁ-んァ-ヶー一-龠々]/g,"");
 }
 
-// ===== スクレイピング =====
-async function fetchRanking(url,label){
-  console.log(`🌐 ${label} 取得中...`);
+/* ランキング取得 */
+async function fetchRanking(url, group) {
+  console.log(`${group} 取得中...`);
 
-  const res = await axios.get(url,{
-    headers:{
-      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
-      "Accept-Language": "ja-JP"
+  const res = await axios.get(url, {
+    headers: {
+      "User-Agent":
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36",
+      Cookie: "adultChk=1"
     }
   });
 
   const $ = cheerio.load(res.data);
-  const list = [];
+  const results = [];
 
-  $("tr.rank").each((i,el)=>{
-    const rank = i+1;
-    $(el).find("a.listbox-rank").each((idx,a)=>{
-      const name = cleanName($(a).text().trim());
+  $("table.rank_table tr").each((i, el) => {
+    const rank = i;
+    if(rank === 0) return;
+
+    $(el).find("td").each((idx, td)=>{
+      const name = $(td).find("img").attr("alt");
       if(name){
-        list.push({
-          name,
-          rank,
-          type: ["日間","週間","月間"][idx] || "日間",
-          genre: label
+        results.push({
+          name: normalizeName(name),
+          rank: rank,
+          type: idx === 0 ? "日間" : idx === 1 ? "週間" : "月間",
+          genre: group
         });
       }
     });
   });
 
-  console.log(`✅ ${label} ${list.length}件取得`);
-  return list;
+  console.log(`${group} 抽出件数: ${results.length}`);
+  return results;
 }
 
-(async ()=>{
+(async () => {
 
-const GENRES = [
-  {label:"あちゃ",url:"https://www.dmm.co.jp/live/chat/-/character-ranking/=/genre=popular/group=acha/"},
-  {label:"まちゃ",url:"https://www.dmm.co.jp/live/chat/-/character-ranking/=/genre=popular/group=macha/"},
-  {label:"おちゃ",url:"https://www.dmm.co.jp/live/chat/-/character-ranking/=/genre=popular/group=ocha/"},
-  {label:"新人",url:"https://www.dmm.co.jp/live/chat/-/character-ranking/=/genre=newface/"},
-  {label:"時間帯",url:"https://www.dmm.co.jp/live/chat/-/character-ranking/=/genre=timezone/"}
-];
+  const auth = new google.auth.GoogleAuth({
+    credentials: JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT),
+    scopes: ["https://www.googleapis.com/auth/spreadsheets"],
+  });
 
-let allData = [];
+  const sheets = google.sheets({version:"v4", auth});
 
-for(const g of GENRES){
-  const d = await fetchRanking(g.url,g.label);
-  allData.push(...d);
-}
+  const genres = [
+    { label:"あちゃ", url:"https://www.dmm.co.jp/live/chat/-/character-ranking/=/genre=popular/group=acha/" },
+    { label:"まちゃ", url:"https://www.dmm.co.jp/live/chat/-/character-ranking/=/genre=popular/group=macha/" },
+    { label:"おちゃ", url:"https://www.dmm.co.jp/live/chat/-/character-ranking/=/genre=popular/group=ocha/" }
+  ];
 
-console.log(`📦 総取得件数 ${allData.length}`);
+  let allResults = [];
+  for(const g of genres){
+    const data = await fetchRanking(g.url, g.label);
+    allResults = allResults.concat(data);
+  }
 
-// ===== Google Sheets =====
-const auth = new google.auth.GoogleAuth({
-  credentials: JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT),
-  scopes: ["https://www.googleapis.com/auth/spreadsheets"],
-});
+  console.log("総取得件数:", allResults.length);
 
-const sheets = google.sheets({version:"v4",auth});
+  // 検索リスト取得
+  const list = await sheets.spreadsheets.values.get({
+    spreadsheetId: SPREADSHEET_ID,
+    range: "検索リスト!B:C",
+  });
 
-// 検索リスト
-const searchRes = await sheets.spreadsheets.values.get({
-  spreadsheetId: SPREADSHEET_ID,
-  range: "検索リスト!B:C",
-});
+  const targets = list.data.values.slice(1).map(r=>r[0]);
 
-const searchList = (searchRes.data.values || []).slice(1);
-const targets = searchList.map(r=>r[0]);
+  const filtered = allResults.filter(r => targets.includes(r.name));
 
-const filtered = allData.filter(r=>targets.includes(r.name));
+  console.log("一致人数:", filtered.length);
 
-console.log(`🎯 一致人数 ${filtered.length}`);
+  if(filtered.length === 0){
+    console.log("一致データなし");
+    return;
+  }
 
-// 出力
-if(filtered.length===0){
-  console.log("⚠️ 一致データなし");
-  return;
-}
+  const values = filtered.map(r=>[
+    todayJpMd(),
+    r.name,
+    r.genre,
+    r.type,
+    r.rank
+  ]);
 
-const date = todayJpMd();
-const values = filtered.map((r,i)=>[
-  i===0?date:"",
-  r.name,
-  r.genre,
-  r.type,
-  r.rank
-]);
+  await sheets.spreadsheets.values.append({
+    spreadsheetId: SPREADSHEET_ID,
+    range: "11月!A:E",
+    valueInputOption: "USER_ENTERED",
+    requestBody:{values}
+  });
 
-const month = new Date().getMonth()+1;
-const sheetName = `${month}月`;
+  console.log("✅ 書き込み完了");
 
-await sheets.spreadsheets.values.append({
-  spreadsheetId: SPREADSHEET_ID,
-  range: `${sheetName}!A:E`,
-  valueInputOption:"USER_ENTERED",
-  requestBody:{values}
-});
-
-console.log("✅ スプレッドシート書き込み完了");
 })();

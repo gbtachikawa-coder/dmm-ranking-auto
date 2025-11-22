@@ -1,4 +1,4 @@
-const axios = require("axios");
+const puppeteer = require("puppeteer");
 const cheerio = require("cheerio");
 const { google } = require("googleapis");
 
@@ -17,19 +17,41 @@ function normalizeName(str){
   return str.replace(/[^ぁ-んァ-ヶー一-龠々]/g,"");
 }
 
-/* ランキング取得 */
-async function fetchRanking(url, group) {
-  console.log(`${group} 取得中...`);
+/* PuppeteerでHTML取得 */
+async function getHtml(url, label){
+  console.log(`${label} 取得中...`);
 
-  const res = await axios.get(url, {
-    headers: {
-      "User-Agent":
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36",
-      Cookie: "adultChk=1"
-    }
+  const browser = await puppeteer.launch({
+    headless: "new",
+    args: [
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--disable-blink-features=AutomationControlled"
+    ]
   });
 
-  const $ = cheerio.load(res.data);
+  const page = await browser.newPage();
+
+  await page.setUserAgent(
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+  );
+
+  await page.goto(url, {
+    waitUntil: "networkidle2",
+    timeout: 60000
+  });
+
+  const html = await page.content();
+  await browser.close();
+
+  return html;
+}
+
+/* ランキング取得 */
+async function fetchRanking(url, group) {
+
+  const html = await getHtml(url, group);
+  const $ = cheerio.load(html);
   const results = [];
 
   $("table.rank_table tr").each((i, el) => {
@@ -69,6 +91,7 @@ async function fetchRanking(url, group) {
   ];
 
   let allResults = [];
+
   for(const g of genres){
     const data = await fetchRanking(g.url, g.label);
     allResults = allResults.concat(data);
@@ -76,7 +99,6 @@ async function fetchRanking(url, group) {
 
   console.log("総取得件数:", allResults.length);
 
-  // 検索リスト取得
   const list = await sheets.spreadsheets.values.get({
     spreadsheetId: SPREADSHEET_ID,
     range: "検索リスト!B:C",

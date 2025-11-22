@@ -37,7 +37,8 @@ if (ageBtn) {
 }
 
 // ランキングブロック出現まで待機
-await page.waitForSelector("table.rank_table", { timeout: 60000 });
+await page.waitForSelector("tr.rank1", { timeout: 60000 });
+
 
   const data = await page.evaluate((groupLabel) => {
     const results = [];
@@ -74,15 +75,32 @@ await page.waitForSelector("table.rank_table", { timeout: 60000 });
 /* ------------------ メイン処理 ------------------ */
 (async () => {
 const browser = await puppeteer.launch({
-  headless: "new",
+  headless: true,
   args: [
     "--no-sandbox",
     "--disable-setuid-sandbox",
-    "--disable-dev-shm-usage",
-    "--disable-gpu",
-    "--no-zygote",
-    "--single-process"
+    "--disable-blink-features=AutomationControlled",
+    "--disable-dev-shm-usage"
   ],
+  defaultViewport: { width: 1366, height: 768 }
+});
+
+const page = await browser.newPage();
+
+// ✅ Bot対策：人間ブラウザ偽装
+await page.setUserAgent(
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+);
+
+await page.setExtraHTTPHeaders({
+  "Accept-Language": "ja-JP,ja;q=0.9,en-US;q=0.8,en;q=0.7"
+});
+
+// ✅ navigator.webdriver を無効化
+await page.evaluateOnNewDocument(() => {
+  Object.defineProperty(navigator, 'webdriver', { get: () => false });
+});
+
   defaultViewport: { width: 1280, height: 900 }
 });
 

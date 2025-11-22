@@ -75,15 +75,27 @@ await page.waitForSelector("tr.rank1", { timeout: 60000 });
 /* ------------------ メイン処理 ------------------ */
 (async () => {
 const browser = await puppeteer.launch({
-  headless: true,
+  headless: "new",
   args: [
     "--no-sandbox",
     "--disable-setuid-sandbox",
-    "--disable-blink-features=AutomationControlled",
-    "--disable-dev-shm-usage"
+    "--disable-dev-shm-usage",
+    "--disable-gpu",
+    "--no-zygote",
+    "--single-process"
   ],
-  defaultViewport: { width: 1366, height: 768 }
+  defaultViewport: {
+    width: 1280,
+    height: 900
+  }
 });
+
+const page = await browser.newPage();
+
+await page.setUserAgent(
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+);
+
 
 const page = await browser.newPage();
 

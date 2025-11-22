@@ -63,12 +63,19 @@ async function scrapeGenre(page, genreUrl, groupLabel) {
 
 /* ------------------ メイン処理 ------------------ */
 (async () => {
-  const browser = await puppeteer.launch({
-    headless: false,
-    slowMo: 100,
-    args: ["--no-sandbox", "--disable-setuid-sandbox"],
-    defaultViewport: { width: 1280, height: 900 },
-  });
+const browser = await puppeteer.launch({
+  headless: "new",
+  args: [
+    "--no-sandbox",
+    "--disable-setuid-sandbox",
+    "--disable-dev-shm-usage",
+    "--disable-gpu",
+    "--no-zygote",
+    "--single-process"
+  ],
+  defaultViewport: { width: 1280, height: 900 }
+});
+
   const page = await browser.newPage();
 
   const GENRES = [

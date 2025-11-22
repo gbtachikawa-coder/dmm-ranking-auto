@@ -27,7 +27,17 @@ async function scrapeGenre(page, genreUrl, groupLabel) {
     { waitUntil: "networkidle2", timeout: 90000 }
   );
 
-  await page.waitForSelector("a.listbox-rank.js-lc-i3Link", { timeout: 20000 });
+await page.waitForSelector("body", { timeout: 60000 });
+
+// 年齢確認が出た場合に強制突破
+const ageBtn = await page.$("a[href*='declared=yes']");
+if (ageBtn) {
+  await ageBtn.click();
+  await page.waitForNavigation({ waitUntil: "networkidle2" });
+}
+
+// ランキングブロック出現まで待機
+await page.waitForSelector("table.rank_table", { timeout: 60000 });
 
   const data = await page.evaluate((groupLabel) => {
     const results = [];
@@ -76,7 +86,12 @@ const browser = await puppeteer.launch({
   defaultViewport: { width: 1280, height: 900 }
 });
 
-  const page = await browser.newPage();
+ const page = await browser.newPage();
+
+await page.setUserAgent(
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+);
+
 
   const GENRES = [
     { label: "あちゃ", url: "https://www.dmm.co.jp/live/chat/-/character-ranking/=/genre=popular/group=acha/" },
